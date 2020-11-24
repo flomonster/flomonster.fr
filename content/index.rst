@@ -18,10 +18,10 @@ School projects:
 -  `Rasterizer <https://github.com/flomonster/rasterizer>`_: an implementation of a 3D
    rasterizer in c++.
 -  `Bee Wings Intersection <https://github.com/bjorn-grape/bee-wing-intersection>`__:
-   Detection of bee's veins intersection written in python.
+   detection of bee's veins intersection written in python.
 -  `Aegina <https://github.com/JMounier/Aegina>`__:
    a survival 3D multiplayer game made with C#/Unity.
--  `OCR <https://github.com/flomonster/ocr>`__: Optical character
+-  `OCR <https://github.com/flomonster/ocr>`__: optical character
    recognition software written in C.
 
 I do have some other projects hosted on my GitHub page:
@@ -53,8 +53,8 @@ Here is a list of the most important tasks I have done as a teaching assistant:
   EPITA students, the idea is to code an AI to the chess game. I had to improve
   the subject and recode a powerful ref.
 
-Algorithmic competition
-~~~~~~~~~~~~~~~~~~~~~~~
+Algorithmic contest
+~~~~~~~~~~~~~~~~~~~
 
 `Prologin <https://prologin.org/>`_
 -----------------------------------
