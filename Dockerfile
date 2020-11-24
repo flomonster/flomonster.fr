@@ -1,4 +1,6 @@
-FROM python:3.8-alpine AS builder
+FROM --platform=${BUILDPLATFORM} python:3.8-alpine AS builder
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
 
 COPY . /code
 
