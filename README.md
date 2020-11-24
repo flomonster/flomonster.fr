@@ -17,6 +17,10 @@ make build
 Note: despite the Python virtual env, you still need to install a recent version
 of pandoc because pypandoc is only a wrapper around it.
 
+## Docker Image
+
+You can find the docker image [here](https://hub.docker.com/repository/docker/flomonster/flomonster.fr).
+
 ## Server
 
 The website is hosted [here](http://flomonster.fr/).
