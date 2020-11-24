@@ -24,9 +24,6 @@ School projects:
 -  `OCR <https://github.com/flomonster/ocr>`__: optical character
    recognition software written in C.
 
-I do have some other projects hosted on my GitHub page:
-`raytracer <https://github.com/flomonster/raytracer>`__,
-
 Teaching Assistant
 ~~~~~~~~~~~~~~~~~~
 
