@@ -8,6 +8,7 @@ build:
 	mkdir -p $(WEBSITE_DIR)
 	python3 build/build.py $(WEBSITE_DIR)
 	cp -TR css $(WEBSITE_DIR)/css
+	cp -TR js $(WEBSITE_DIR)/js
 	cp -TR img $(WEBSITE_DIR)/img
 	cp -TR static $(WEBSITE_DIR)/upload
 
