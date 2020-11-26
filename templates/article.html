@@ -16,7 +16,10 @@
 
     <h1><a href="">{{ metadata['title'] }}</a></h1>
     {% if metadata['published'] and metadata['modified'] %}
-        <p class="metadata">Publié : {{ metadata['published'] }} · Modifié : {{ metadata['modified'] }}</p>
+        <p class="metadata">Published : {{ metadata['published'] }} · Modified : {{ metadata['modified'] }}</p>
+        <hr>
+    {% elif metadata['published'] %}
+        <p class="metadata">Published : {{ metadata['published'] }}</p>
         <hr>
     {% endif %}
 {% endblock %}

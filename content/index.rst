@@ -4,7 +4,7 @@ interested in **programming** and **image rendering**. I mainly code in Rust, C+
 and Python.
 
 Projects
-~~~~~~~~
+========
 
 Some of my favorite personal projects:
 
@@ -24,8 +24,16 @@ School projects:
 -  `OCR <https://github.com/flomonster/ocr>`__: optical character
    recognition software written in C.
 
+`Articles </articles.html>`_
+============================
+
+When I find an interesting topic and a lack of resources on the Internet, I like
+to write an article about it.
+
+You can find an article about KD tree implementation in Rust `here </articles/kdtree.html>`__.
+
 Teaching Assistant
-~~~~~~~~~~~~~~~~~~
+==================
 
 While studying at `Epita <http://www.epita.fr/>`__ I was part of the teaching
 assistant team. The assistant team's objectives are to teach programming to the
@@ -51,7 +59,7 @@ Here is a list of the most important tasks I have done as a teaching assistant:
   the subject and recode a powerful ref.
 
 Algorithmic contest
-~~~~~~~~~~~~~~~~~~~
+===================
 
 `Prologin <https://prologin.org/>`_
 -----------------------------------
