@@ -14,7 +14,12 @@ into the paper formulas, you can keep reading without woring.
 
 Each version of the code is available:
 
-* `Naive implementation <https://github.com/flomonster/kdtree-ray/tree/naive>`_
+* Naive implementation: `<https://github.com/flomonster/kdtree-ray/tree/naive>`_.
+* Sah in :math:`O(N^2)`: `<https://github.com/flomonster/kdtree-ray/tree/sah-quadratic>`_.
+* Sah in :math:`O(N \log^2{N})`: `<https://github.com/flomonster/kdtree-ray/tree/sah-log2>`_.
+
+The models used for benchmark are from the `Stanford Scanning Repository
+<http://graphics.stanford.edu/data/3Dscanrep/>`_.
 
 General principles
 ------------------
@@ -273,11 +278,11 @@ An ``Item`` is simply the aggregation of a primitive and its AABB.
        }
    }
 
-We can also define ``Items`` which is a list of ``Item``.
+We can also define ``Items`` which is a list of ``Arc<Item>``.
 
 .. code:: rust
 
-   pub type Items<P> = Vec<Item<P>>;
+   pub type Items<P> = Vec<Arc<Item<P>>>;
 
 Build KD Tree
 =============
@@ -292,31 +297,28 @@ create the root node.
 .. code:: rust
 
    impl<P: BoundingBox> KDtree<P> {
-       /// This function is used to create a new KD-tree. You need to provide a
-       /// `Vec` of values that implement `BoundingBox` trait.
-       pub fn new(mut values: Vec<P>) -> Self {
-           let mut space = AABB(Vector3::<f32>::max_value(), Vector3::<f32>::min_value());
-           let mut items = Items::new();
-           while let Some(v) = values.pop() {
-               // Create items from values
-               let item = Item::new(v);
+     /// This function is used to create a new KD-tree. You need to provide a
+     /// `Vec` of values that implement `BoundingBox` trait.
+     pub fn new(mut values: Vec<P>) -> Self {
+         let mut space = AABB(Vector3::<f32>::max_value(), Vector3::<f32>::min_value());
+         let mut items = Items::new();
+         while let Some(v) = values.pop() {
+             // Create items from values
+             let item = Arc::new(Item::new(v));
 
-               // Update space with the bounding box of the item
-               space.0.x = space.0.x.min(item.bb.0.x);
-               space.0.y = space.0.y.min(item.bb.0.y);
-               space.0.z = space.0.z.min(item.bb.0.z);
-               space.1.x = space.1.x.max(item.bb.1.x);
-               space.1.y = space.1.y.max(item.bb.1.y);
-               space.1.z = space.1.z.max(item.bb.1.z);
+             // Update space with the bounding box of the item
+             space.0.x = space.0.x.min(item.bb.0.x);
+             space.0.y = space.0.y.min(item.bb.0.y);
+             space.0.z = space.0.z.min(item.bb.0.z);
+             space.1.x = space.1.x.max(item.bb.1.x);
+             space.1.y = space.1.y.max(item.bb.1.y);
+             space.1.z = space.1.z.max(item.bb.1.z);
 
-               items.push(item);
-           }
-
-           // Create the root KDtreeNode
-           // We provide the computed space, items and a max_depth of our tree
-           let root = KDtreeNode::new(&space, items, 20);
-           KDtree { space, root }
-       }
+             items.push(item);
+         }
+         let root = KDtreeNode::new(&space, items, 10);
+         KDtree { space, root }
+     }
    }
 
 Note that the ``max_depth`` will allow us to create a stopping criterion easily.
@@ -330,36 +332,36 @@ Let's implement the function to create a ``KDtreeNode``.
 .. code:: rust
 
    impl<P: BoundingBox> KDtreeNode<P> {
-       pub fn new(space: &AABB, mut items: Items<P>, max_depth: usize) -> Self {
-           // Heuristic to terminate the recursion
-           if items.len() <= 15 || max_depth == 0 {
-               // Create the vector
-               let mut values = vec![];
-               while let Some(i) = items.pop() {
-                   values.push(i.value);
-               }
-               return Self::Leaf {
-                   space: space.clone(),
-                   values,
-               };
-           }
+     pub fn new(space: &AABB, mut items: Items<P>, max_depth: usize) -> Self {
+         // Heuristic to terminate the recursion
+         if items.len() <= 15 || max_depth == 0 {
+             // Create the vector
+             let mut values = vec![];
+             while let Some(i) = items.pop() {
+                 values.push(i.value.clone());
+             }
+             return Self::Leaf {
+                 space: space.clone(),
+                 values,
+             };
+         }
 
-           // Find a plane to partition the space
-           let plan = Self::partition(&space, max_depth);
+         // Find a plane to partition the space
+         let plan = Self::partition(&space, max_depth);
 
-           // Compute the new spaces divided by `plan`
-           let (left_space, right_space) = Self::split_space(&space, &plan);
+         // Compute the new spaces divided by `plan`
+         let (left_space, right_space) = Self::split_space(&space, &plan);
 
-           // Compute which items are part of the left and right space
-           let (left_items, right_items) = Self::classify(&items, &left_space, &right_space);
+         // Compute which items are part of the left and right space
+         let (left_items, right_items) = Self::classify(&items, &left_space, &right_space);
 
-           Self::Node {
-               left_node: Box::new(Self::new(&left_space, left_items, max_depth - 1)),
-               right_node: Box::new(Self::new(&right_space, right_items, max_depth - 1)),
-               left_space,
-               right_space,
-           }
-       }
+         Self::Node {
+             left_node: Box::new(Self::new(&left_space, left_items, max_depth - 1)),
+             right_node: Box::new(Self::new(&right_space, right_items, max_depth - 1)),
+             left_space,
+             right_space,
+         }
+     }
    }
 
 Note that an arbitrary heuristic is used. The effectiveness of this heuristic
@@ -481,7 +483,249 @@ The same for ``KDtreeNode``:
        }
    }
 
-Benchmark & Conclusion
-======================
+We are done with our naive implementation. It is obvious that a lot could be
+done to improve the generated tree and we will explore this in the next part.
+Still, this implementation brings a huge improvement to our rendering engine.
 
-.. TODO
+Surface Area Heuristic (SAH)
+----------------------------
+
+Theory
+======
+
+The SAH method provides both the ability to know which cutting plan is the best
+and whether it is worth dividing the space (create a node) or not (create a sheet).
+To do this, we need to calculate the *"cost"* of a leaf and the internal nodes for
+each possible splitting plan.
+
+Before explaining the method, we need to make a few assumptions:
+
+- :math:`K_I`: The cost for primitive (triangle) **I**ntersection.
+- :math:`K_T`: The cost for a **T**raversal step of the tree.
+
+We can now calculate the cost of an intersection in our kd-tree. Let's say that,
+for a given ray and kd-tree, the intersection function returns 13 primitives and
+had to pass through 8 nodes of the tree.
+
+:math:`C_{intersection} = 13 \times K_I + 8 \times K_T`.
+
+It is fairly easy to calculate the cost of a leaf. It is simply the number of
+primitives contained in the leaf :math:`|T|` multiplied by :math:`K_I`.
+
+  :math:`C_{leaf} = |T| \times K_I`
+
+It is somewhat more difficult to calculate the cost of an internal node given a
+splitting plan. First we need to define more terms:
+
+- :math:`p`: The splitting plan candidate.
+- :math:`V`: The space of the whole node.
+- :math:`|V_L|` and :math:`|V_R|`: The left and right space splitted by :math:`p`.
+- :math:`|T_L|` and :math:`|T_R|`: The number of primitives that overlap the left
+  and right volumes seperated by :math:`p`.
+- :math:`SA(space)`: The function that calculate the surface area of a given space.
+  This function is quite simple knowing the spaces are AABB, it's simply the
+  multiplication of each side of the box.
+
+The cost of an internal node is given by the following formula.
+
+  :math:`C_{node}(p) = K_T + K_I \Big (|T_L| \times \frac{SA(V_L)}{SA(V)} + |T_R| \times \frac{SA(V_R)}{SA(V)} \Big)`
+
+This formula may seem magical, but it is simply the cost of one traversal step
+(:math:`K_T`), plus the expected cost of intersecting the two children. The
+expected cost of intersecting a child is calculated by multiplying the number of
+primitives in the child and the ratio of the area taken by the child's space.
+
+Some shortcuts were made in the explanation of the formulas for more details take
+a look at the `scientific reference paper
+<http://www.irisa.fr/prive/kadi/Sujets_CTR/kadi/Kadi_sujet2_article_Kdtree.pdf>`_.
+
+How to use SAH
+==============
+
+Sah gives us a way to compare splitting plans and select the best one. Once we
+have it, Sah lets us know if it's worth cutting or if a leaf is preferable.
+
+Basically what will change in our code is the partition function and the
+termination function.
+
+To divide our space, we are going to take all the possible splitting planes in
+the 3 dimensions (called perfect splits). Then we will calculate the cost of the
+partition and take the smallest one.
+
+We need to define K_T and K_I in our implementation. For this the paper advice
+to use:
+
+- :math:`K_T=15`
+- :math:`K_I=20`
+
+Implementation of needed functions
+==================================
+
+These are the functions that use the above formulas to calculate the cost of a
+split.
+
+.. code:: rust
+
+   static K_T: f32 = 15.;
+   static K_I: f32 = 20.;
+
+   impl<P: BoundingBox> KDtreeNode<P> {
+     /// Compute surface area volume of a space (AABB).
+     fn surface_area(v: &AABB) -> f32 {
+         (v.1.x - v.0.x) * (v.1.y - v.0.y) * (v.1.z - v.0.z)
+     }
+
+     /// Surface Area Heuristic (SAH)
+     fn cost(p: &Plan, v: &AABB, n_l: usize, n_r: usize) -> f32 {
+         // Split space
+         let (v_l, v_r) = Self::split_space(v, p);
+
+         // Compute the surface area of both sub-space
+         let (vol_l, vol_r) = (Self::surface_area(&v_l), Self::surface_area(&v_r));
+
+         // Compute the surface area of the whole space
+         let vol_v = vol_l + vol_r;
+
+         // If one of the sub-space is empty then the split can't be worth
+         if vol_v == 0. || vol_l == 0. || vol_r == 0. {
+             return f32::INFINITY;
+         }
+
+         // Decrease cost if it cuts empty space
+         let factor = if n_l == 0 || n_r == 0 { 0.8 } else { 1. };
+
+         factor * (K_T + K_I * (n_l as f32 * vol_l / vol_v + n_r as f32 * vol_r / vol_v))
+     }
+
+     /// Return the perfect splits candidates of a given item and dimension.
+     /// It's the clipped plans around the bounding box.
+     fn perfect_splits(item: Arc<Item<P>>, v: &AABB, dim: usize) -> Vec<Plan> {
+         let mut res = vec![];
+         match dim {
+             0 => {
+                 res.push(Plan::X(item.bb.0.x.max(v.0.x)));
+                 res.push(Plan::X(item.bb.1.x.min(v.1.x)));
+             }
+             1 => {
+                 res.push(Plan::Y(item.bb.0.y.max(v.0.y)));
+                 res.push(Plan::Y(item.bb.1.y.min(v.1.y)));
+             }
+             2 => {
+                 res.push(Plan::Z(item.bb.0.z.max(v.0.z)));
+                 res.push(Plan::Z(item.bb.1.z.min(v.1.z)));
+             }
+             _ => panic!("Invalid dimension number received: ({})", dim),
+         }
+         res
+     }
+   }
+
+Build tree in :math:`O(N^2)`
+============================
+
+We can update the ``partition`` and ``new`` function in the simplest way.
+
+.. code:: rust
+
+   pub fn new(space: &AABB, mut items: Items<P>) -> Self {
+       let (cost, plan) = Self::partition(&items, &space);
+
+       // Check that the cost of the splitting is not higher than the cost of the leaf.
+       if cost > K_I * items.len() as f32 {
+           // Create the vector of primitives
+           let mut values = vec![];
+           while let Some(i) = items.pop() {
+               values.push(i.value.clone());
+           }
+           return Self::Leaf {
+               space: space.clone(),
+               values,
+           };
+       }
+
+       // Compute the new spaces divided by `plan`
+       let (left_space, right_space) = Self::split_space(&space, &plan);
+
+       // Compute which items are part of the left and right space
+       let (left_items, right_items) = Self::classify(&items, &left_space, &right_space);
+
+       Self::Node {
+           left_node: Box::new(Self::new(&left_space, left_items)),
+           right_node: Box::new(Self::new(&right_space, right_items)),
+           left_space,
+           right_space,
+       }
+   }
+
+   /// Takes the items and space of a node and return the best splitting plan and his cost
+   fn partition(items: &Items<P>, space: &AABB) -> (f32, Plan) {
+       let (mut best_cost, mut best_plan) = (f32::INFINITY, Plan::X(0.));
+       // For all the dimension
+       for dim in 0..3 {
+           for item in items {
+               for plan in Self::perfect_splits(item.clone(), space, dim) {
+                   // Compute the new spaces divided by `plan`
+                   let (left_space, right_space) = Self::split_space(&space, &plan);
+                   // Compute which items are part of the left and right space
+                   let (left_items, right_items) =
+                       Self::classify(&items, &left_space, &right_space);
+                   // Compute the cost of the current plan
+                   let cost = Self::cost(&plan, space, left_items.len(), right_items.len());
+                   // If better update the best values
+                   if cost < best_cost {
+                       best_cost = cost;
+                       best_plan = plan.clone();
+                   }
+               }
+           }
+       }
+       (best_cost, best_plan)
+   }
+
+For each item, we use a ``classification`` function that also performs an
+iteration on the items. This is why this partition implementation is in
+:math:`O(N^2)`. As you can see in the `Benchmark`_ section, this is a problem
+because the time saved by the sah method is lost in the construction of the kd-tree.
+
+The full code is available `here <https://github.com/flomonster/kdtree-ray/tree/sah-quadratic>`_.
+
+Build tree in :math:`O(N \log^2{N})`
+====================================
+
+
+
+
+Benchmark
+---------
+
+Render Runtime
+==============
+
+Runtime calculated using a raytracer and an image resolution of ``800x800``.
+
++------------+--------+------------------+-----------+---------+
+| Model      | Nb Tri | No Kd-Tree (min) | Naive (s) | Sah (s) |
++============+========+==================+===========+=========+
+| Armadillo  | 346k   | 50               | 38        | 10      |
++------------+--------+------------------+-----------+---------+
+| Dragon     | 863k   | 115              | 65        | 10      |
++------------+--------+------------------+-----------+---------+
+| Buddha     | 1m     | 150              | 63        | 10      |
++------------+--------+------------------+-----------+---------+
+| ThaiStatue | 10m    | 1140             | 1980      |         |
++------------+--------+------------------+-----------+---------+
+
+Build Tree Runtime
+==================
+
++------------+--------+-----------+----------------+----------------------------+-------------------------+
+| Model      | Nb Tri | Naive (s) | :math:`O(N^2)` | :math:`O(N \log^2{N})` (s) | :math:`O(N \log N)` (s) |
++============+========+===========+================+============================+=========================+
+| Armadillo  | 346k   | 0.352     | 28h            | 16                         |                         |
++------------+--------+-----------+----------------+----------------------------+-------------------------+
+| Dragon     | 863k   | 0.853     | 178h           | 60                         |                         |
++------------+--------+-----------+----------------+----------------------------+-------------------------+
+| Buddha     | 1m     | 1.016     | 240h           | 64                         |                         |
++------------+--------+-----------+----------------+----------------------------+-------------------------+
+| ThaiStatue | 10m    | 14.7      | 1000days       |                            |                         |
++------------+--------+-----------+----------------+----------------------------+-------------------------+
