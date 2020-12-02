@@ -53,6 +53,9 @@ class Content:
         for section in re.findall(r"<h[23].*?[</h23]>", self.html):
             ref = re.search('id="(.*?)"', section).group(1)
             text = re.search('>(.*)<', section).group(1)
+            # Remove links in the text
+            text = re.sub('<a.*?>', '', text)
+            text = re.sub('</a>', '', text)
             h2 = section.startswith("<h2")
             navbar.append((ref, text, h2))
         self.metadata["navbar"] = navbar

@@ -23,15 +23,3 @@
         <hr>
     {% endif %}
 {% endblock %}
-
-{% block navbar %}
-    <ul>
-    {% for ref, text, h2 in metadata['navbar'] %}
-      {% if h2 %}
-        <li class="section"><a href="#{{ ref }}">{{ text }}</a></li>
-      {% else %}
-        <li class="subsection"><a href="#{{ ref }}">{{ text }}</a></li>
-      {% endif %}
-    {% endfor %}
-    </ul>
-{% endblock %}

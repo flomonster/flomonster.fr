@@ -38,8 +38,22 @@
         </div>
 
         <div class="navbar">
-            {% block navbar %}
-            {% endblock %}
+            <header>
+                {% if 'navbar_title' in metadata %}
+                  <h4 class="nav_title">{{ metadata['navbar_title'] }}</h4>
+                {% else %}
+                  <h4 class="nav_title">On this page</h4>
+                {% endif %}
+            </header>
+            <ul>
+            {% for ref, text, h2 in metadata['navbar'] %}
+              {% if h2 %}
+                <li class="section"><a href="#{{ ref }}">{{ text }}</a></li>
+              {% else %}
+                <li class="subsection"><a href="#{{ ref }}">{{ text }}</a></li>
+              {% endif %}
+            {% endfor %}
+            </ul>
         </div>
 
         <div class="content">

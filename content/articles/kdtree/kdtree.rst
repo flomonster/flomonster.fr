@@ -692,9 +692,6 @@ The full code is available `here <https://github.com/flomonster/kdtree-ray/tree/
 Build tree in :math:`O(N \log^2{N})`
 ====================================
 
-
-
-
 Benchmark
 ---------
 
