@@ -21,6 +21,7 @@ class Content:
 
         self.fix_pandoc_code_blocks()
         self.add_custom_directives()
+        self.add_navbar()
 
     def fix_pandoc_code_blocks(self):
         # https://github.com/jgm/pandoc/issues/3858
@@ -46,3 +47,12 @@ class Content:
 
         for d in directives:
             self.html = re.sub(d["old"], d["new"], self.html)
+
+    def add_navbar(self):
+        navbar = []
+        for section in re.findall(r"<h[23].*?[</h23]>", self.html):
+            ref = re.search('id="(.*?)"', section).group(1)
+            text = re.search('>(.*)<', section).group(1)
+            h2 = section.startswith("<h2")
+            navbar.append((ref, text, h2))
+        self.metadata["navbar"] = navbar

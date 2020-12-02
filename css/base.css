@@ -7,10 +7,12 @@ body {
 
     font-family: "Roboto", "Helvetica", "Arial", sans-serif;
     line-height: 1.5;
+    margin-bottom: 4em;
+}
 
+.content {
     margin: 0 auto;
     max-width: 45%;
-    margin-bottom: 4em;
 }
 
 /* ---- Titles ---- */
@@ -68,18 +70,60 @@ nav li:not(:first-child):before {
     content: " · ";
 }
 
+/* ---- NavBar ---- */
+
+.navbar {
+  position: sticky;
+  float: right;
+  z-index: 1;
+  background: #f6f6f7;
+  top: 135px;
+  right: 3%;
+  width: 20%;
+}
+
+.navbar ul li {
+    list-style: outside none none !important;
+}
+
+.section {
+  font-weight: bold;
+}
+
+.subsection {
+  margin-left:10px;
+}
+
 /* ---- Responsive Design ---- */
 
 /* Smartphones */
 @media (max-width: 750px) {
-    body {
+    .content {
         max-width: 90%;
+    }
+
+    .navbar{
+        position: static;
+        float: none;
+        width: auto;
+        max-width: 90%;
+        top: 0px;
+        margin: 0 auto;
     }
 }
 
 /* Tablets */
 @media (min-width: 751px) and (max-width: 1100px) {
-    body {
+    .content {
         max-width: 70%;
+    }
+
+    .navbar{
+        position: static;
+        float: none;
+        width: auto;
+        max-width: 70%;
+        top: 0px;
+        margin: 0 auto;
     }
 }

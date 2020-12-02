@@ -423,8 +423,8 @@ the axis on which the division is made will be changed.
        }
    }
 
-Intersect KDtree
-================
+Intersect KD Tree
+=================
 
 Now that our we can build a ``KDtree``, we are able to compute our reduced list
 of primitives that can intersect a ray.

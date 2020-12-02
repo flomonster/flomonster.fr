@@ -30,14 +30,23 @@
     </head>
 
     <body>
-        <header>
-            {% block header %}
+        <div class="content">
+            <header>
+                {% block header %}
+                {% endblock %}
+            </header>
+        </div>
+
+        <div class="navbar">
+            {% block navbar %}
             {% endblock %}
-        </header>
+        </div>
 
-        {% block before_content %}
-        {% endblock %}
+        <div class="content">
+            {% block before_content %}
+            {% endblock %}
 
-        {{ html_content }}
+            {{ html_content }}
+        </div>
     </body>
 </html>
