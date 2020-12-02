@@ -7,6 +7,9 @@
         <link rel="stylesheet" type="text/css" href="/css/base.css">
         <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
 
+        <!-- JQuerry -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+
         <!-- Font Awesome -->
         <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 
@@ -23,6 +26,9 @@
                 src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS_CHTML">
         </script>
 
+        <!-- NavBar -->
+        <script src="/js/navbar.js"></script>
+
         <title>{{ metadata['title'] }}</title>
 
         {% block head %}
@@ -38,13 +44,11 @@
         </div>
 
         <div class="navbar">
-            <header>
-                {% if 'navbar_title' in metadata %}
-                  <h4 class="nav_title">{{ metadata['navbar_title'] }}</h4>
-                {% else %}
-                  <h4 class="nav_title">On this page</h4>
-                {% endif %}
-            </header>
+            {% if 'navbar_title' in metadata %}
+              <h4 class="nav_title">{{ metadata['navbar_title'] }}</h4>
+            {% else %}
+              <h4 class="nav_title">On this page</h4>
+            {% endif %}
             <ul>
             {% for ref, text, h2 in metadata['navbar'] %}
               {% if h2 %}

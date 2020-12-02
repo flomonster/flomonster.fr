@@ -99,6 +99,13 @@ nav li:not(:first-child):before {
     margin: 0;
     font-weight: bold;
     padding: 0.25rem 0.75rem;
+    text-align: left;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.navbar .active {
+    background: #cca7a1;
 }
 
 .navbar ul {
