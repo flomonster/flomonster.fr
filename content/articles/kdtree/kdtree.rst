@@ -12,11 +12,13 @@ Since this paper describes well the theoretical part, I will focus on the
 implementation. However, if you just want to implement a KD tree without diving
 into the paper formulas, you can keep reading without woring.
 
-Each version of the code is available:
+This article describes the implementation of several versions of kdtree starting
+from a naive version to an optimized version. Each version of the code is available:
 
 * Naive implementation: `<https://github.com/flomonster/kdtree-ray/tree/naive>`_.
 * Sah in :math:`O(N^2)`: `<https://github.com/flomonster/kdtree-ray/tree/sah-quadratic>`_.
 * Sah in :math:`O(N \log^2{N})`: `<https://github.com/flomonster/kdtree-ray/tree/sah-log2>`_.
+* Sah in :math:`O(N \log{N})`: `<https://github.com/flomonster/kdtree-ray/tree/sah-log>`_.
 
 The models used for benchmark are from the `Stanford Scanning Repository
 <http://graphics.stanford.edu/data/3Dscanrep/>`_.
@@ -28,7 +30,7 @@ Context
 =======
 
 Many rendering engines are based on the physics of light rays. This method allows
-to obtain realistic images, but it is quite slow. Indeed, it requires throwing a
+to obtain realistic images, but is quite slow. Indeed, it requires throwing a
 lot of rays and checking if they intersect an object in the scene.
 
 To do this, the easiest way is to check for each primitive (for example triangles)
@@ -92,7 +94,7 @@ An AABB is convenient and optimized to check if two entities overlap. It is also
 simple to check if a ray intersects an AABB.
 
 So, to build a KD tree, we must recursively divide a space and classify which
-primitives overlap the new subspaces. To optimize the above criteria, we must
+primitives overlap the new subspaces. For an optimal kdtree, we must
 divide the space optimally and stop recursion optimally.
 
 Naive implementation
@@ -100,8 +102,6 @@ Naive implementation
 
 This version will serve as a proof of concept. And yet, it will significantly
 reduce the intersection search algorithm runtime.
-
-The full code is available `here <https://github.com/flomonster/kdtree-ray/tree/naive>`_.
 
 Bounding Box
 ============
@@ -208,32 +208,47 @@ kind of object. It allows us to define two state:
    use std::sync::Arc;
 
    #[derive(Clone, Debug)]
-   pub enum KDtreeNode<P: BoundingBox> {
-       Leaf {
-           space: AABB,
-           values: Vec<Arc<P>>,
-       },
-       Node {
-           left_space: AABB,
-           left_node: Box<KDtreeNode<P>>,
-           right_space: AABB,
-           right_node: Box<KDtreeNode<P>>,
-       },
+   pub struct InternalNode<P: BoundingBox> {
+       left_space: AABB,
+       left_node: KDtreeNode<P>,
+       right_space: AABB,
+       right_node: KDtreeNode<P>,
    }
 
-We are using ``Arc`` cause our primitive could be clone in several branches of our
-tree. To avoid copying the full object ``Arc`` allows us to do reference counting.
+   #[derive(Clone, Debug)]
+   pub enum KDtreeNode<P: BoundingBox> {
+       Leaf { items: HashSet<Arc<Item<P>>> },
+       Node { node: Box<InternalNode<P>> },
+   }
 
-Plan
-====
+The implementation of this structure is really important. We need to optimize the memory used by the tree.
+
+- A primitive could be in several branches of our tree. To avoid copies, we use
+  ``Arc`` which keeps only one reference on the objects.
+- Then, dividing the structure in two using ``InternalNode`` reduces the size of
+  ``KDtreeNode`` from ``72`` to ``56`` bytes. This doesn't change anything for our
+  internal nodes since they need an instance of ``InternalNode``, but our leaves
+  are much lighter.
+
+Note that our leaves stores ``Items<P>`` and not ``P`` we'll talk about ``Item``
+later. What we can explain now is the data structure used to store these items.
+We're using an ``HashSet`` instead of a ``Vec``. When we are intersecting a ray to
+our kdtree we have to return all candidates primitives that could intersect the ray.
+In other words we have to retrieve all the leaves intersecting the ray and return
+their primitives. So we'll have to use the **union** mathematical operation to merge
+these primitives in one collection without doubles. This operation can only be
+done using ``Set`` data structures. In addition our ``Item`` will need to be hashable.
+
+Plane
+=====
 
 Let's create a structure that represents a split in a space. Since our space is
-in 3D a plan is perfect to represents this seperation.
+in 3D a plane is perfect to represents this seperation.
 
 .. code:: rust
 
    #[derive(Clone, Debug)]
-   pub enum Plan {
+   pub enum Plane {
        X(f32), // Split on the X-axis
        Y(f32), // Split on the Y-axis
        Z(f32), // Split on the Z-axis
@@ -243,26 +258,31 @@ in 3D a plan is perfect to represents this seperation.
 Item
 ====
 
-Before starting the kdtree implementation we will define an Item structure that
-will simplify our code.
+Before starting the kdtree implementation we need to define and explain Items.
+``Item`` structure will allow us two things:
 
-An ``Item`` is simply the aggregation of a primitive and its AABB.
+- First simplify the code by aggregate a primitive and his bounding box.
+- Then being hashable needed by ``HashSet`` (into our leaves).
+  To do so an ``id`` will be added in the structure.
 
 .. code:: rust
+
+   use std::hash::{Hash, Hasher};
+   use std::sync::Arc;
 
    #[derive(Debug)]
    pub struct Item<P: BoundingBox> {
        pub value: Arc<P>,
        pub bb: AABB,
+       pub id: usize,
    }
 
    impl<P: BoundingBox> Item<P> {
-       /// Method to create a new Item from a primitive.
-       pub fn new(value: P) -> Self {
-           let bb = value.bounding_box();
+       pub fn new(value: P, bb: AABB, id: usize) -> Self {
            Item {
                value: Arc::new(value),
                bb,
+               id,
            }
        }
    }
@@ -274,7 +294,22 @@ An ``Item`` is simply the aggregation of a primitive and its AABB.
            Item {
                value: self.value.clone(),
                bb: self.bb.clone(),
+               id: self.id,
            }
+       }
+   }
+
+   /// Implementation of the Hash trait
+   impl<P: BoundingBox> Hash for Item<P> {
+       fn hash<H: Hasher>(&self, state: &mut H) {
+           self.id.hash(state);
+       }
+   }
+
+   impl<P: BoundingBox> Eq for Item<P> {}
+   impl<P: BoundingBox> PartialEq for Item<P> {
+       fn eq(&self, other: &Self) -> bool {
+           self.id == other.id
        }
    }
 
@@ -297,31 +332,34 @@ create the root node.
 .. code:: rust
 
    impl<P: BoundingBox> KDtree<P> {
-     /// This function is used to create a new KD-tree. You need to provide a
-     /// `Vec` of values that implement `BoundingBox` trait.
-     pub fn new(mut values: Vec<P>) -> Self {
-         let mut space = AABB(Vector3::<f32>::max_value(), Vector3::<f32>::min_value());
-         let mut items = Items::new();
-         while let Some(v) = values.pop() {
-             // Create items from values
-             let item = Arc::new(Item::new(v));
+       /// This function is used to create a new KD-tree. You need to provide a
+       /// `Vec` of values that implement `BoundingBox` trait.
+       pub fn new(mut values: Vec<P>) -> Self {
+           let mut space =
+               AABB(Vector3::<f32>::max_value(), Vector3::<f32>::min_value());
+           let mut items = Items::with_capacity(values.len());
+           // Enumerate the values to get a tuple (id, value)
+           for (id, v) in values.drain(..).enumerate() {
+               // Create items from values
+               let bb = v.bounding_box();
+               items.push(Arc::new(Item::new(v, bb.clone(), id)));
 
-             // Update space with the bounding box of the item
-             space.0.x = space.0.x.min(item.bb.0.x);
-             space.0.y = space.0.y.min(item.bb.0.y);
-             space.0.z = space.0.z.min(item.bb.0.z);
-             space.1.x = space.1.x.max(item.bb.1.x);
-             space.1.y = space.1.y.max(item.bb.1.y);
-             space.1.z = space.1.z.max(item.bb.1.z);
-
-             items.push(item);
-         }
-         let root = KDtreeNode::new(&space, items, 10);
-         KDtree { space, root }
-     }
+               // Update space with the bounding box of the item
+               space.0.x = space.0.x.min(bb.0.x);
+               space.0.y = space.0.y.min(bb.0.y);
+               space.0.z = space.0.z.min(bb.0.z);
+               space.1.x = space.1.x.max(bb.1.x);
+               space.1.y = space.1.y.max(bb.1.y);
+               space.1.z = space.1.z.max(bb.1.z);
+           }
+           // Create the root of the kdtree with a maximum depth of 10
+           let root = KDtreeNode::new(&space, items, 10);
+           KDtree { space, root }
+       }
    }
 
-Note that the ``max_depth`` will allow us to create a stopping criterion easily.
+
+Note that the **maximum depth** will allow us to create a stopping criterion easily.
 The value was chosen arbitrarily.
 
 KDtreeNode
@@ -332,160 +370,191 @@ Let's implement the function to create a ``KDtreeNode``.
 .. code:: rust
 
    impl<P: BoundingBox> KDtreeNode<P> {
-     pub fn new(space: &AABB, mut items: Items<P>, max_depth: usize) -> Self {
-         // Heuristic to terminate the recursion
-         if items.len() <= 15 || max_depth == 0 {
-             // Create the vector
-             let mut values = vec![];
-             while let Some(i) = items.pop() {
-                 values.push(i.value.clone());
-             }
-             return Self::Leaf {
-                 space: space.clone(),
-                 values,
-             };
-         }
+     pub fn new(space: &AABB, items: Items<P>, max_depth: usize) -> Self {
+        // Heuristic to terminate the recursion
+        if items.len() <= 15 || max_depth == 0 {
+            return Self::Leaf {
+                items: items.iter().cloned().collect(),
+            };
+        }
 
-         // Find a plane to partition the space
-         let plan = Self::partition(&space, max_depth);
+        // Find a plane to partition the space
+        let plane = Self::partition(&space, max_depth);
 
-         // Compute the new spaces divided by `plan`
-         let (left_space, right_space) = Self::split_space(&space, &plan);
+        // Compute the new spaces divided by `plane`
+        let (left_space, right_space) = Self::split_space(&space, &plane);
 
-         // Compute which items are part of the left and right space
-         let (left_items, right_items) = Self::classify(&items, &left_space, &right_space);
+        // Compute which items are part of the left and right space
+        let (left_items, right_items) =
+            Self::classify(&items, &left_space, &right_space);
 
-         Self::Node {
-             left_node: Box::new(Self::new(&left_space, left_items, max_depth - 1)),
-             right_node: Box::new(Self::new(&right_space, right_items, max_depth - 1)),
-             left_space,
-             right_space,
-         }
-     }
+        Self::Node {
+            node: Box::new(InternalNode {
+                left_node: Self::new(&left_space, left_items, max_depth - 1),
+                right_node: Self::new(&right_space, right_items, max_depth - 1),
+                left_space,
+                right_space,
+            }),
+        }
+      }
    }
 
+There is a lot going on here. This contains the basic algorithm to build our kdtree.
 Note that an arbitrary heuristic is used. The effectiveness of this heuristic
 depends mainly on the scene itself. We can greatly improve it by using more
 parameters but we will talk about it later.
 
 We still need to implement the functions ``classify``, ``split_space`` and
-``partition``. The last one is probably the most important. Where should we
-split our space? Once again we're going to take the most simple solution for now.
-We will use the spatial median splitting technique. At each depth of the tree,
+``partition``. This last function is probably the most important since, depending
+on where we split our space, the kdtree will be more or less efficient.
+Once again we're going to take the most simple solution for now.
+We will use the spatial **median splitting technique**. At each depth of the tree,
 the axis on which the division is made will be changed.
 
 .. code:: rust
 
    impl<P: BoundingBox> KDtreeNode<P> {
-       fn classify(items: &Items<P>, left_space: &AABB, right_space: &AABB) -> (Items<P>, Items<P>) {
-           (
-               // All items that overlap with the left space is taken
-               items
-                   .iter()
-                   .filter(|item| left_space.intersect_box(&item.bb))
-                   .cloned()
-                   .collect(),
-               // All items that overlap with the right space is taken
-               items
-                   .iter()
-                   .filter(|item| right_space.intersect_box(&item.bb))
-                   .cloned()
-                   .collect(),
-           )
-       }
+     fn classify(items: &Items<P>, left_space: &AABB, right_space: &AABB)
+       -> (Items<P>, Items<P>) {
+         (
+             // All items that overlap with the left space is taken
+             items
+                 .iter()
+                 .filter(|item| left_space.intersect_box(&item.bb))
+                 .cloned()
+                 .collect(),
+             // All items that overlap with the right space is taken
+             items
+                 .iter()
+                 .filter(|item| right_space.intersect_box(&item.bb))
+                 .cloned()
+                 .collect(),
+         )
+     }
 
-       fn split_space(space: &AABB, plan: &Plan) -> (AABB, AABB) {
-           let mut left = space.clone();
-           let mut right = space.clone();
-           match plan {
-               Plan::X(x) => {
-                   left.1.x = *x;
-                   right.0.x = *x
-               }
-               Plan::Y(y) => {
-                   left.1.y = *y;
-                   right.0.y = *y
-               }
-               Plan::Z(z) => {
-                   left.1.z = *z;
-                   right.0.z = *z;
-               }
-           }
-           (left, right)
-       }
+     fn split_space(space: &AABB, plane: &Plane) -> (AABB, AABB) {
+         let mut left = space.clone();
+         let mut right = space.clone();
+         match plane {
+             Plane::X(x) => {
+                 left.1.x = x.max(space.0.x).min(space.1.x);
+                 right.0.x = x.max(space.0.x).min(space.1.x);
+             }
+             Plane::Y(y) => {
+                 left.1.y = y.max(space.0.y).min(space.1.y);
+                 right.0.y = y.max(space.0.y).min(space.1.y);
+             }
+             Plane::Z(z) => {
+                 left.1.z = z.max(space.0.z).min(space.1.z);
+                 right.0.z = z.max(space.0.z).min(space.1.z);
+             }
+         }
+         (left, right)
+     }
 
-       fn partition(space: &AABB, max_depth: usize) -> Plan {
-           match max_depth % 3 {
-               0 => Plan::X((space.0.x + space.1.x) / 2.),
-               1 => Plan::Y((space.0.y + space.1.y) / 2.),
-               _ => Plan::Z((space.0.z + space.1.z) / 2.),
-           }
-       }
+     fn partition(space: &AABB, max_depth: usize) -> Plane {
+         match max_depth % 3 {
+             0 => Plane::X((space.0.x + space.1.x) / 2.),
+             1 => Plane::Y((space.0.y + space.1.y) / 2.),
+             _ => Plane::Z((space.0.z + space.1.z) / 2.),
+         }
+     }
    }
+
+You may have noticed that the ``perfect_splits`` function clips the plane to the
+space ``v``. This is perfectly useless for the naive version. The median plane will
+never be outside the space ``v``. However later versions might call the function
+with a plane that is not contained in ``v``.
 
 Intersect KD Tree
 =================
 
-Now that our we can build a ``KDtree``, we are able to compute our reduced list
-of primitives that can intersect a ray.
+Now that our kdtree is built, we are able to compute our reduced list of primitives
+that can intersect a ray.
 
-Let's start with the ``KDtree`` struct:
+Let's implement this function starting with the ``KDtree`` struct:
 
 .. code:: rust
 
    impl<P: BoundingBox> KDtree<P> {
-       pub fn intersect(
-           &self,
-           ray_origin: &Vector3<f32>,
-           ray_direction: &Vector3<f32>,
-       ) -> Vec<Arc<P>> {
-           // Check if the ray intersect the bounding box of the Kd Tree
-           if self.space.intersect_ray(ray_origin, ray_direction) {
-               self.root.intersect(ray_origin, ray_direction)
-           } else {
-               vec![]
-           }
-       }
+     /// This function takes a ray and return a reduced list of candidates that
+     /// can be intersected by the ray.
+     pub fn intersect(
+         &self,
+         ray_origin: &Vector3<f32>,
+         ray_direction: &Vector3<f32>,
+     ) -> Vec<Arc<P>> {
+         // Check if the ray intersect the bounding box of the Kd Tree
+         if self.space.intersect_ray(ray_origin, ray_direction) {
+             // Create an empty set of items
+             let mut items = HashSet::new();
+             // This call will fill our set of primitives
+             self.root.intersect(ray_origin, ray_direction, &mut items);
+             // Convert the set of items in vector of primitives
+             items.iter().map(|e| e.value.clone()).collect()
+         } else {
+             // If the ray doesn't intersect the global bounding box no
+             // primitives can be intersected
+             vec![]
+         }
+     }
    }
 
-The same for ``KDtreeNode``:
+The ``KDtreeNode::intersect`` is responsible to walk through the kdtree and
+when necessary fill the given set ``intersected_items``.
 
 .. code:: rust
 
    impl<P: BoundingBox> KDtreeNode<P> {
-       pub fn intersect(
-           &self,
-           ray_origin: &Vector3<f32>,
-           ray_direction: &Vector3<f32>,
-       ) -> Vec<Arc<P>> {
-           match self {
-               // In case of leaf simply return the values
-               Self::Leaf { values, .. } => values.clone(),
-               // In case of an internal node check the sub-spaces
-               Self::Node {
-                   left_space,
-                   left_node,
-                   right_space,
-                   right_node,
-               } => {
-                   let mut res = vec![];
-                   if right_space.intersect_ray(ray_origin, ray_direction) {
-                       // The ray intersect the left sub-space
-                       res = right_node.intersect(ray_origin, ray_direction);
-                   }
-                   if left_space.intersect_ray(ray_origin, ray_direction) {
-                       // The ray intersect the right sub-space
-                       res.append(&mut left_node.intersect(ray_origin, ray_direction));
-                   }
-                   res
-               }
-           }
-       }
+     pub fn intersect(
+         &self,
+         ray_origin: &Vector3<f32>,
+         ray_direction: &Vector3<f32>,
+         intersected_items: &mut HashSet<Arc<Item<P>>>,
+     ) {
+         match self {
+             Self::Leaf { items } => {
+                 // The ray intersect a leaf so we his items to the set.
+                 intersected_items.extend(items.clone());
+             }
+             Self::Node { node } => {
+                 if node.right_space.intersect_ray(ray_origin, ray_direction) {
+                   node.right_node
+                       .intersect(ray_origin, ray_direction, intersected_items);
+                 }
+                 if node.left_space.intersect_ray(ray_origin, ray_direction) {
+                   node.left_node
+                       .intersect(ray_origin, ray_direction, intersected_items);
+                 }
+             }
+         }
+     }
    }
+
+Tips and analysis
+=================
 
 We are done with our naive implementation. It is obvious that a lot could be
 done to improve the generated tree and we will explore this in the next part.
 Still, this implementation brings a huge improvement to our rendering engine.
+
+One way to use a kdtrees for your scenes is to store each model in a kdtree and
+then you can store your kdtrees (of models) in a global kdtree for the entire scene.
+
+To be able to create a kdtree of kdtree you only need to implement the trait
+``BoundingBox`` for the ``KDtree`` struct.
+
+.. code:: rust
+
+   impl<P: BoundingBox> BoundingBox for KDtree<P>
+   {
+       fn bounding_box(&self) -> AABB {
+           self.space.clone()
+       }
+   }
+
+A simple trick that allows you to render scenes with a large number of models
+and primitives.
 
 Surface Area Heuristic (SAH)
 ----------------------------
@@ -493,10 +562,10 @@ Surface Area Heuristic (SAH)
 Theory
 ======
 
-The SAH method provides both the ability to know which cutting plan is the best
+The SAH method provides both the ability to know which cutting plane is the best
 and whether it is worth dividing the space (create a node) or not (create a sheet).
 To do this, we need to calculate the *"cost"* of a leaf and the internal nodes for
-each possible splitting plan.
+each possible splitting plane.
 
 Before explaining the method, we need to make a few assumptions:
 
@@ -515,9 +584,9 @@ primitives contained in the leaf :math:`|T|` multiplied by :math:`K_I`.
   :math:`C_{leaf} = |T| \times K_I`
 
 It is somewhat more difficult to calculate the cost of an internal node given a
-splitting plan. First we need to define more terms:
+splitting plane. First we need to define more terms:
 
-- :math:`p`: The splitting plan candidate.
+- :math:`p`: The splitting plane candidate.
 - :math:`V`: The space of the whole node.
 - :math:`|V_L|` and :math:`|V_R|`: The left and right space splitted by :math:`p`.
 - :math:`|T_L|` and :math:`|T_R|`: The number of primitives that overlap the left
@@ -542,7 +611,7 @@ a look at the `scientific reference paper
 How to use SAH
 ==============
 
-Sah gives us a way to compare splitting plans and select the best one. Once we
+Sah gives us a way to compare splitting planes and select the best one. Once we
 have it, Sah lets us know if it's worth cutting or if a leaf is preferable.
 
 Basically what will change in our code is the partition function and the
@@ -576,17 +645,18 @@ split.
      }
 
      /// Surface Area Heuristic (SAH)
-     fn cost(p: &Plan, v: &AABB, n_l: usize, n_r: usize) -> f32 {
+     fn cost(p: &Plane, v: &AABB, n_l: usize, n_r: usize) -> f32 {
          // Split space
          let (v_l, v_r) = Self::split_space(v, p);
 
-         // Compute the surface area of both sub-space
-         let (vol_l, vol_r) = (Self::surface_area(&v_l), Self::surface_area(&v_r));
+         // Compute the surface area of both subspace
+         let vol_l = Self::surface_area(&v_l);
+         let vol_r = Self::surface_area(&v_r);
 
          // Compute the surface area of the whole space
          let vol_v = vol_l + vol_r;
 
-         // If one of the sub-space is empty then the split can't be worth
+         // If one of the subspace is empty then the split can't be worth
          if vol_v == 0. || vol_l == 0. || vol_r == 0. {
              return f32::INFINITY;
          }
@@ -594,102 +664,132 @@ split.
          // Decrease cost if it cuts empty space
          let factor = if n_l == 0 || n_r == 0 { 0.8 } else { 1. };
 
-         factor * (K_T + K_I * (n_l as f32 * vol_l / vol_v + n_r as f32 * vol_r / vol_v))
-     }
-
-     /// Return the perfect splits candidates of a given item and dimension.
-     /// It's the clipped plans around the bounding box.
-     fn perfect_splits(item: Arc<Item<P>>, v: &AABB, dim: usize) -> Vec<Plan> {
-         let mut res = vec![];
-         match dim {
-             0 => {
-                 res.push(Plan::X(item.bb.0.x.max(v.0.x)));
-                 res.push(Plan::X(item.bb.1.x.min(v.1.x)));
-             }
-             1 => {
-                 res.push(Plan::Y(item.bb.0.y.max(v.0.y)));
-                 res.push(Plan::Y(item.bb.1.y.min(v.1.y)));
-             }
-             2 => {
-                 res.push(Plan::Z(item.bb.0.z.max(v.0.z)));
-                 res.push(Plan::Z(item.bb.1.z.min(v.1.z)));
-             }
-             _ => panic!("Invalid dimension number received: ({})", dim),
-         }
-         res
+         // Node cost formula
+         factor * (K_T + K_I * (n_l as f32 * vol_l / vol_v +
+                                n_r as f32 * vol_r / vol_v))
      }
    }
+
+The cost formula is slightly different from the one presented above. A factor of
+``0.8`` has been added in case one of the subspaces does not contain any items.
+This small change improves the results somewhat.
+
+Generate candidates
+===================
+
+We are able to evaluate the cost of a split. However, there remains a problem,
+in a given space there are an infinite number of planes of partition. It is
+therefore necessary to choose an arbitrary number of planes that we will compare
+with each other and select the one with the lowest cost. These planes will be
+called candidate.
+
+We can observe that in a given dimension two different planes that separate the
+elements in the same way will have a very close cost. This being said we can
+choose as candidates the planes formed by the sides of the bounding boxes of
+each primitive.
+
+.. figure:: /img/articles/kdtree/candidates.svg
+   :alt: A 2D figure of splitting candidates.
+   :width: 70%
+
+   An example of splitting candidates in 2D. The green lines are splitting
+   candidates in a dimension, the red in another.
+
+Given an item and a dimension we need to be able to generate such splitting candidates.
+
+.. code:: rust
+
+   impl<P: BoundingBox> Item<P> {
+       pub fn candidates(&self, dim: usize) -> Vec<Plane> {
+           match dim {
+               0 => vec![Plane::X(self.bb.0.x), Plane::X(self.bb.1.x)],
+               1 => vec![Plane::Y(self.bb.0.y), Plane::Y(self.bb.1.y)],
+               2 => vec![Plane::Z(self.bb.0.z), Plane::Z(self.bb.1.z)],
+               _ => panic!("Invalid dimension number received: ({})", dim),
+           }
+       }
+   }
+
+Note that we generate planes that are not mandatory within a space. The clipping
+of the ``split_space`` function is needed.
 
 Build tree in :math:`O(N^2)`
 ============================
 
-We can update the ``partition`` and ``new`` function in the simplest way.
+We can update the ``partition`` and ``new`` functions to get rid of our heuristics
+and use the sah instead (no more ``max_depth``). This modification will greatly
+increase the construction time of the kdtree. We will ignore this for now.
 
 .. code:: rust
 
-   pub fn new(space: &AABB, mut items: Items<P>) -> Self {
-       let (cost, plan) = Self::partition(&items, &space);
+   pub fn new(space: &AABB, items: Items<P>) -> Self {
+       let (cost, plane) = Self::partition(&items, &space);
 
-       // Check that the cost of the splitting is not higher than the cost of the leaf.
+       // Check that the cost of the splitting is not higher than the cost of
+       // the leaf.
        if cost > K_I * items.len() as f32 {
-           // Create the vector of primitives
-           let mut values = vec![];
-           while let Some(i) = items.pop() {
-               values.push(i.value.clone());
-           }
            return Self::Leaf {
-               space: space.clone(),
-               values,
+               items: items.iter().cloned().collect(),
            };
        }
 
-       // Compute the new spaces divided by `plan`
-       let (left_space, right_space) = Self::split_space(&space, &plan);
+       // Compute the new spaces divided by `plane`
+       let (left_space, right_space) = Self::split_space(&space, &plane);
 
        // Compute which items are part of the left and right space
-       let (left_items, right_items) = Self::classify(&items, &left_space, &right_space);
+       let (left_items, right_items) =
+           Self::classify(&items, &left_space, &right_space);
 
        Self::Node {
-           left_node: Box::new(Self::new(&left_space, left_items)),
-           right_node: Box::new(Self::new(&right_space, right_items)),
-           left_space,
-           right_space,
+           node: Box::new(InternalNode {
+               left_node: Self::new(&left_space, left_items),
+               right_node: Self::new(&right_space, right_items),
+               left_space,
+               right_space,
+           }),
        }
    }
 
-   /// Takes the items and space of a node and return the best splitting plan and his cost
-   fn partition(items: &Items<P>, space: &AABB) -> (f32, Plan) {
-       let (mut best_cost, mut best_plan) = (f32::INFINITY, Plan::X(0.));
+   /// Takes the items and space of a node and return the best splitting plane
+   /// and his cost
+   fn partition(items: &Items<P>, space: &AABB) -> (f32, Plane) {
+       let (mut best_cost, mut best_plane) = (f32::INFINITY, Plane::X(0.));
        // For all the dimension
        for dim in 0..3 {
            for item in items {
-               for plan in Self::perfect_splits(item.clone(), space, dim) {
-                   // Compute the new spaces divided by `plan`
-                   let (left_space, right_space) = Self::split_space(&space, &plan);
+               for plane in item.candidates(dim) {
+                   // Compute the new spaces divided by `plane`
+                   let (left_space, right_space) =
+                       Self::split_space(&space, &plane);
+
                    // Compute which items are part of the left and right space
                    let (left_items, right_items) =
                        Self::classify(&items, &left_space, &right_space);
-                   // Compute the cost of the current plan
-                   let cost = Self::cost(&plan, space, left_items.len(), right_items.len());
+
+                   // Compute the cost of the current plane
+                   let cost = Self::cost(&plane, space,
+                                         left_items.len(), right_items.len());
+
                    // If better update the best values
                    if cost < best_cost {
                        best_cost = cost;
-                       best_plan = plan.clone();
+                       best_plane = plane.clone();
                    }
                }
            }
        }
-       (best_cost, best_plan)
+       (best_cost, best_plane)
    }
 
-For each item, we use a ``classification`` function that also performs an
-iteration on the items. This is why this partition implementation is in
-:math:`O(N^2)`. As you can see in the `Benchmark`_ section, this is a problem
-because the time saved by the sah method is lost in the construction of the kd-tree.
 
-The full code is available `here <https://github.com/flomonster/kdtree-ray/tree/sah-quadratic>`_.
+For each **candidate**, we call ``classify`` function that performs an iteration
+on all items. This is why this partition implementation is in :math:`O(N^2)`.
+As you can check in the `Benchmark`_ section, this implementation is not viable.
 
 Build tree in :math:`O(N \log^2{N})`
+====================================
+
+Build tree in :math:`O(N \log{N})`
 ====================================
 
 Benchmark
@@ -703,17 +803,20 @@ Runtime calculated using a raytracer and an image resolution of ``800x800``.
 +------------+--------+----------------+-----------+---------+
 | Model      | Nb Tri | No Kd-Tree (s) | Naive (s) | Sah (s) |
 +============+========+================+===========+=========+
-| Armadillo  | 346k   | 3000           | 38        | 10      |
+| Armadillo  | 346k   | 3,000          | 38        | 10      |
 +------------+--------+----------------+-----------+---------+
-| Dragon     | 863k   | 6900           | 65        | 10      |
+| Dragon     | 863k   | 6,900          | 65        | 10      |
 +------------+--------+----------------+-----------+---------+
-| Buddha     | 1m     | 9000           | 63        | 10      |
+| Buddha     | 1m     | 9,000          | 63        | 10      |
 +------------+--------+----------------+-----------+---------+
-| ThaiStatue | 10m    | 68400          | 1980      | 95      |
+| ThaiStatue | 10m    | 68,400         | 1,980     | 95      |
 +------------+--------+----------------+-----------+---------+
 
-Build Tree Runtime
-==================
+The naive implementation is not optimized at all. We can expect to get better
+results with a tweaked implementation.
+
+Tree construction runtime
+=========================
 
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
 | Model      | Nb Tri | Naive (s) | :math:`O(N^2)` | :math:`O(N \log^2{N})` (s) | :math:`O(N \log N)` (s) |
@@ -724,5 +827,5 @@ Build Tree Runtime
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
 | Buddha     | 1m     | 1.016     | 240h           | 64                         |                         |
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
-| ThaiStatue | 10m    | 14.7      | 1000days       | 1918 (need confirm)        |                         |
+| ThaiStatue | 10m    | 14.7      | 1,000days      | 1,918 (need confirm)       |                         |
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
