@@ -103,8 +103,11 @@ Naive implementation
 This version will serve as a proof of concept. And yet, it will significantly
 reduce the intersection search algorithm runtime.
 
+Needed structure
+================
+
 Bounding Box
-============
+############
 
 First of all, we have to define our AABB since that's what we're going to
 manipulate.
@@ -183,7 +186,7 @@ sure to have an AABB for our primitives.
    }
 
 KD Tree Structs
-===============
+###############
 
 Let's create our ``KDtree`` structure. It will contain the root node and an initial
 space. The initial space is an AABB that contains all the primitives. It will
@@ -240,7 +243,7 @@ these primitives in one collection without doubles. This operation can only be
 done using ``Set`` data structures. In addition our ``Item`` will need to be hashable.
 
 Plane
-=====
+#####
 
 Let's create a structure that represents a split in a space. Since our space is
 in 3D a plane is perfect to represents this seperation.
@@ -256,7 +259,7 @@ in 3D a plane is perfect to represents this seperation.
 
 
 Item
-====
+####
 
 Before starting the kdtree implementation we need to define and explain Items.
 ``Item`` structure will allow us two things:
@@ -319,8 +322,8 @@ We can also define ``Items`` which is a list of ``Arc<Item>``.
 
    pub type Items<P> = Vec<Arc<Item<P>>>;
 
-Build KD Tree
-=============
+Build kdtree
+============
 
 KDtree
 ######
@@ -789,8 +792,577 @@ As you can check in the `Benchmark`_ section, this implementation is not viable.
 Build tree in :math:`O(N \log^2{N})`
 ====================================
 
+Let's now optimize the construction time of our kdtree. We noticed that the element
+that makes our construction slow is the usage of the function ``classify``.
+
+The reason for calling this function is to find out the number of items to the
+left and right of a splitting candidate. To solve this problem we will use an
+**incremental sweep** algorithm.
+
+This algorithm needs to know if a splitting candidate is to the **left** or to
+the **right** of its associated primitive.
+
+In a given dimension, two counters are established:
+
+- The number of primitives to the left of the candidate.
+- The number of primitives to the right of the candidate.
+
+These are the necessary information for the ``cost`` function. The algorithm will
+then sweep the candidates in the order of their position and depending on whether
+they are to the left or to the right of the primitive it will update its counters.
+
+Here is a diagram to illustrate the steps of the algorithm.
+
+.. figure:: /img/articles/kdtree/sweep.svg
+   :alt: A 2D figure showing 3 primitives and their candidates
+   :width: 70%
+
+   2D figure of 3 primitives, green lines are for left candidates, red for right.
+
+
++----------------+-------+----------------+-----------------+
+| Candidates     | Side  | Left count     | Right count     |
++================+=======+================+=================+
+| Initialization | N/A   | 0              | 3               |
++----------------+-------+----------------+-----------------+
+| 1              | Left  | 0 **+ 1** = 1  | 3               |
++----------------+-------+----------------+-----------------+
+| 2              | Left  | 1 **+ 1** = 2  | 3               |
++----------------+-------+----------------+-----------------+
+| 3              | Right | 2              | 3 **- 1** = 2   |
++----------------+-------+----------------+-----------------+
+| 4              | Left  | 2 **+ 1** = 3  | 2               |
++----------------+-------+----------------+-----------------+
+| 5              | Right | 3              | 2 **- 1** = 1   |
++----------------+-------+----------------+-----------------+
+| 6              | Right | 3              | 1 **- 1** = 0   |
++----------------+-------+----------------+-----------------+
+
+You may have noticed that the left counter has not exactly the right value. There
+is an offset when the candidate is left. You will have to update the counter value
+after calling the cost function.
+
+The same kind of function can be used to find the items belonging to the left
+and right subspace. But for this purpose the candidates must keep a reference on
+their associated item.
+
+Candidate
+#########
+
+A ``Candidate`` structure is needed to aggregate the separator planes, their side
+(left/right) and a reference on the item.
+
+.. code::rust
+
+   #[derive(Debug)]
+   pub struct Candidate<P: BoundingBox> {
+       pub plane: Plane,
+       pub is_left: bool,
+       pub item: Arc<Item<P>>,
+   }
+
+We also need to be able to sort the candidates. For this we implement the trait
+``Ord`` and ``Eq``.
+
+.. code::rust
+
+   impl Plane {
+       /// To easily extract plane position
+       pub fn value(&self) -> f32 {
+           match self {
+               Plane::X(v) => *v,
+               Plane::Y(v) => *v,
+               Plane::Z(v) => *v,
+           }
+       }
+   }
+
+   impl<P: BoundingBox> Ord for Candidate<P> {
+       fn cmp(&self, other: &Self) -> Ordering {
+           // Just need to compare the position of the plane
+           if self.plane.value() < other.plane.value() {
+               Ordering::Less
+           } else {
+               Ordering::Greater
+           }
+       }
+   }
+
+   // Required by Ord trait
+   impl<P: BoundingBox> PartialOrd for Candidate<P> {
+       fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+           Some(self.cmp(other))
+       }
+   }
+
+   impl<P: BoundingBox> Eq for Candidate<P> {}
+
+   // Required by Eq trait
+   impl<P: BoundingBox> PartialEq for Candidate<P> {
+       fn eq(&self, other: &Self) -> bool {
+           self.plane.value() == other.plane.value()
+       }
+   }
+
+Let's implement a function to generate these Candidate similar to the previous
+function ``candidates``. We can also add other functions that will be usefull
+for implentinIf the bounding box of the item is flat (so that its candidates have the same value), the left candidate must still appear first during the sweep.g the incremental sweep algorithm.
+
+.. code::rust
+
+   /// Candidates is a list of Candidate
+   pub type Candidates<P> = Vec<Candidate<P>>;
+
+   impl<P: BoundingBox> Candidate<P> {
+     fn new(plane: Plane, is_left: bool, item: Arc<Item<P>>) -> Self {
+         Candidate {
+             plane,
+             is_left,
+             item,
+         }
+     }
+
+     /// Return candidates (splits candidates) for a given dimension.
+     pub fn gen_candidates(item: Arc<Item<P>>, dim: usize) -> Candidates<P> {
+         match dim {
+             0 => vec![
+                 Candidate::new(Plane::X(item.bb.0.x), true, item.clone()),
+                 Candidate::new(Plane::X(item.bb.1.x), false, item),
+             ],
+             1 => vec![
+                 Candidate::new(Plane::Y(item.bb.0.y), true, item.clone()),
+                 Candidate::new(Plane::Y(item.bb.1.y), false, item),
+             ],
+             2 => vec![
+                 Candidate::new(Plane::Z(item.bb.0.z), true, item.clone()),
+                 Candidate::new(Plane::Z(item.bb.1.z), false, item),
+             ],
+             _ => panic!("Invalid dimension number used: ({})", dim),
+         }
+     }
+
+     /// Return the dimension value of the candidate
+     pub fn dimension(&self) -> usize {
+         match self.plane {
+             Plane::X(_) => 0,
+             Plane::Y(_) => 1,
+             Plane::Z(_) => 2,
+         }
+     }
+
+     pub fn is_left(&self) -> bool {
+         self.is_left
+     }
+
+     pub fn is_right(&self) -> bool {
+         !self.is_left
+     }
+   }
+
+**Important**: The function ``gen_candidates`` returns first the left candidate
+and then the right one. This detail is important. If the bounding box of
+the item is flat (so that its candidates have the same value), the left candidate
+must still appear first during the sweep.
+
+Partition and Classify
+######################
+
+The ``partition`` function will have a lot of modification first instead of
+returning a ``Plane`` we will return the sorted list of candidates and the index
+of the best splitting candidate. Doing so will allow us to use an optimized
+classify function.
+
+.. code::rust
+
+   /// Compute the best splitting candidate
+   /// Return:
+   /// * Cost of the split
+   /// * The list of candidates (in the best dimension found)
+   /// * Index of the best candidate
+   fn partition(items: &Items<P>, space: &AABB) -> (f32, Candidates<P>, usize) {
+       let mut best_cost = f32::INFINITY;
+       let mut best_candidate_index = 0;
+       let mut best_candidates = vec![];
+
+       // For all the dimension
+       for dim in 0..3 {
+           // Generate candidates
+           let mut candidates = vec![];
+           for item in items {
+               let mut c = Candidate::gen_candidates(item.clone(), dim);
+               candidates.append(&mut c);
+           }
+
+           // Sort candidates
+           candidates.sort_by(|a, b| a.cmp(&b));
+
+           // Initialize counters
+           let mut n_r = items.len();
+           let mut n_l = 0;
+
+           // Used to update best_candidates list
+           let mut best_dim = false;
+
+           // Find best candidate
+           for (i, candidate) in candidates.iter().enumerate() {
+               if candidate.is_right() {
+                   n_r -= 1;
+               }
+
+               // Compute the cost of the current plane
+               let cost = Self::cost(&candidate.plane, space, n_l, n_r);
+
+               // If better update the best values
+               if cost < best_cost {
+                   best_cost = cost;
+                   best_candidate_index = i;
+                   best_dim = true;
+               }
+
+               if candidate.is_left() {
+                   n_l += 1;
+               }
+           }
+
+           // If a better candidate was found then keep the candidate list
+           if best_dim {
+               best_candidates = candidates;
+           }
+       }
+       (best_cost, best_candidates, best_candidate_index)
+   }
+
+You must know that the sorting in Rust is stable that is to say in our case that
+two candidates with the same plane will keep their order. This is important to
+properly handle the case of flat bounding box. If you're using a non stable sort
+you can slightly modify the comparison function of candidates to take into account
+the ``is_left`` field.
+
+The ``classify`` function is quite simple to implement.
+
+.. code::rust
+
+   fn classify(candidates: &Candidates<P>, best_index: usize)
+     -> (Items<P>, Items<P>) {
+       let mut left_items = Items::with_capacity(candidates.len() / 3);
+       let mut right_items = Items::with_capacity(candidates.len() / 3);
+
+       for i in 0..best_index {
+           if candidates[i].is_left() {
+               left_items.push(candidates[i].item.clone());
+           }
+       }
+       for i in (1 + best_index)..candidates.len() {
+           if candidates[i].is_right() {
+               right_items.push(candidates[i].item.clone());
+           }
+       }
+       (left_items, right_items)
+   }
+
+Finally we must adapt the function``KDtreeNode::new``.
+
+.. code::rust
+
+   pub fn new(space: &AABB, items: Items<P>) -> Self {
+       let (cost, candidates, best_index) = Self::partition(&items, &space);
+
+       // Check that the cost of the splitting is not higher than the cost of
+       // the leaf.
+       if cost > K_I * items.len() as f32 {
+           return Self::Leaf {
+               items: items.iter().cloned().collect(),
+           };
+       }
+
+       // Compute the new spaces divided by `plane`
+       let (left_space, right_space) =
+           Self::split_space(&space, &candidates[best_index].plane);
+
+       // Compute which items are part of the left and right space
+       let (left_items, right_items) = Self::classify(&candidates, best_index);
+
+       Self::Node {
+           node: Box::new(InternalNode {
+               left_node: Self::new(&left_space, left_items),
+               right_node: Self::new(&right_space, right_items),
+               left_space,
+               right_space,
+           }),
+       }
+   }
+
+We now have a correct implementation of kdtree. However we can still speed up the
+tree construction to be optimal. We will see how in the next part.
+
 Build tree in :math:`O(N \log{N})`
 ====================================
+
+This slows down our tree construction and the **sorting** of candidates. The idea
+to optimize is to do one sort at the very beginning.
+
+To do this we have to solve two problems:
+
+- Take the sorting out of the inner loop of the ``partition`` function.
+- Classify the candidates keeping them sorted.
+
+The first problem can be fixed easily if we take as an argument a sorted list of
+candidates (from all dimension) we can easily find the best candidate. We just
+need more counters and be careful of candidates dimension.
+
+We can modify our ``partition`` function:
+
+.. code::rust
+
+   /// Compute the best splitting candidate
+   /// Return:
+   /// * Cost of the split
+   /// * Index of the best candidate
+   /// * Number of items in the left partition
+   /// * Number of items in the right partition
+   fn partition(n: usize, space: &AABB, candidates: &Candidates<P>)
+     -> (f32, usize, usize, usize) {
+       let mut best_cost = f32::INFINITY;
+       let mut best_candidate_index = 0;
+
+       // Variables to keep count the number of items in both subspace for
+       // each dimension
+       let mut n_l = [0; 3];
+       let mut n_r = [n; 3];
+
+       // Keep n_l and n_r for the best splitting candidate
+       let mut best_n_l = 0;
+       let mut best_n_r = n;
+
+       // Find best candidate
+       for (i, candidate) in candidates.iter().enumerate() {
+           let dim = candidate.dimension();
+
+           // If the right candidate removes it from the right subspace
+           if candidate.is_right() {
+               n_r[dim] -= 1;
+           }
+
+           // Compute the cost of the split and update the best split
+           let cost = Self::cost(&candidate.plane, space, n_l[dim], n_r[dim]);
+           if cost < best_cost {
+               best_cost = cost;
+               best_candidate_index = i;
+               best_n_l = n_l[dim];
+               best_n_r = n_r[dim];
+           }
+
+           // If the left candidate add it from the left subspace
+           if candidate.is_left() {
+               n_l[dim] += 1;
+           }
+       }
+       (best_cost, best_candidate_index, best_n_l, best_n_r)
+   }
+
+Now we need to split our candidate list given a splitting candidate. Not
+forgetting to keep our new list sorted. We can do that in two steps:
+
+- Determining which items is in the left/right/both subspace.
+- Iterate on candidates adding them to the left/right list of candidates.
+
+To mark items as on left/right/both subspace we can use a new **enum** ``Side``
+and items id field.
+
+.. code::rust
+
+   /// Useful to classify candidates
+   #[derive(Debug, Clone)]
+   pub enum Side { Left, Right, Both }
+
+Instead of instantiating a list of ``Side`` each time we call the classify function.
+We can create this list once at the beginning and pass it through the recursive
+calls of our tree.
+
+Let's implement our new ``classify`` function:
+
+.. code::rust
+
+    fn classify(
+        candidates: Candidates<P>,
+        best_index: usize,
+        sides: &mut Vec<Side>,
+    ) -> (Candidates<P>, Candidates<P>) {
+        // Step 1: Udate sides to classify items
+        Self::classify_items(&candidates, best_index, sides);
+
+        // Step 2: Splicing candidates left and right subspace
+        Self::splicing_candidates(candidates, &sides)
+    }
+
+    /// Step 1 of classify.
+    /// Given a candidate list and a splitting candidate identify wich items are
+    /// part of the left, right and both subspaces.
+    fn classify_items(
+        candidates: &Candidates<P>,
+        best_index: usize,
+        sides: &mut Vec<Side>
+    ) {
+        let best_dimension = candidates[best_index].dimension();
+        for i in 0..(best_index + 1) {
+            if candidates[i].dimension() == best_dimension {
+                if candidates[i].is_right() {
+                    sides[candidates[i].item.id] = Side::Left;
+                } else {
+                    sides[candidates[i].item.id] = Side::Both;
+                }
+            }
+        }
+        for i in best_index..candidates.len() {
+            if candidates[i].dimension() == best_dimension
+               && candidates[i].is_left() {
+                sides[candidates[i].item.id] = Side::Right;
+            }
+        }
+    }
+
+    // Step 2: Splicing candidates left and right subspace given items sides
+    fn splicing_candidates(
+        mut candidates: Candidates<P>,
+        sides: &Vec<Side>,
+    ) -> (Candidates<P>, Candidates<P>) {
+        let estimated_size = candidates.len() / 2;
+        let mut left_candidates = Candidates::with_capacity(estimated_size);
+        let mut right_candidates = Candidates::with_capacity(estimated_size);
+
+        for e in candidates.drain(..) {
+            match sides[e.item.id] {
+                Side::Left => left_candidates.push(e),
+                Side::Right => right_candidates.push(e),
+                Side::Both => {
+                    right_candidates.push(e.clone());
+                    left_candidates.push(e);
+                }
+            }
+        }
+        (left_candidates, right_candidates)
+    }
+
+Let's adapt the function``KDtreeNode::new``.
+
+.. code::rust
+
+   pub fn new(
+       space: &AABB,
+       mut candidates: Candidates<P>,
+       n: usize, // The number of items
+       sides: &mut Vec<Side>,
+   ) -> Self {
+       let (cost, best_index, n_l, n_r) =
+           Self::partition(n, &space, &candidates);
+
+       // Check that the cost of the splitting is not higher than the cost of
+       // the leaf.
+       if cost > K_I * n as f32 {
+           // Create the set of primitives
+           let mut items = HashSet::with_capacity(n);
+           candidates
+               .drain(..)
+               .filter(|e| e.is_left() && e.dimension() == 0)
+               .for_each(|e| {
+                   items.insert(e.item);
+               });
+           return Self::Leaf { items };
+       }
+
+       // Compute the new spaces divided by `plane`
+       let (left_space, right_space) =
+           Self::split_space(&space, &candidates[best_index].plane);
+
+       // Compute which candidates are part of the left and right space
+       let (left_candidates, right_candidates) =
+           Self::classify(candidates, best_index, sides);
+
+       Self::Node {
+           node: Box::new(InternalNode {
+             left_node: Self::new(&left_space, left_candidates, n_l, sides),
+             right_node: Self::new(&right_space, right_candidates, n_r, sides),
+             left_space,
+             right_space,
+           }),
+       }
+   }
+
+Since we are mixing up candidates with different dimensions, can simplify
+``gen_candidates`` function that doesn't need a dimension anymore.
+
+.. code::rust
+
+   impl<P: BoundingBox> Candidate<P> {
+     /// Return candidates (splits candidates) for all dimension.
+     pub fn gen_candidates(item: Arc<Item<P>>, bb: &AABB) -> Candidates<P> {
+         vec![
+             Candidate::new(Plane::X(bb.0.x), true, item.clone()),
+             Candidate::new(Plane::Y(bb.0.y), true, item.clone()),
+             Candidate::new(Plane::Z(bb.0.z), true, item.clone()),
+             Candidate::new(Plane::X(bb.1.x), false, item.clone()),
+             Candidate::new(Plane::Y(bb.1.y), false, item.clone()),
+             Candidate::new(Plane::Z(bb.1.z), false, item),
+         ]
+     }
+   }
+
+We can also simplify ``Item`` since it doesn't need a bounding box as field
+anymore.
+
+.. code::rust
+
+   #[derive(Debug)]
+   pub struct Item<P: BoundingBox> {
+       pub value: Arc<P>,
+       pub id: usize,
+   }
+
+   impl<P: BoundingBox> Item<P> {
+       pub fn new(value: P, id: usize) -> Self {
+           Item {
+               value: Arc::new(value),
+               id,
+           }
+       }
+   }
+
+Finally we must create the initial sorted list of candidate and the list of sides.
+All of that will be done in the ```KDtree::new`` function:
+
+.. code::rust
+
+   pub fn new(mut values: Vec<P>) -> Self {
+       let mut space = AABB(Vector3::<f32>::max_value(),
+                            Vector3::<f32>::min_value());
+       let n = values.len();
+       let mut candidates = Candidates::with_capacity(n * 6);
+       for (id, v) in values.drain(..).enumerate() {
+           // Create items from values
+           let bb = v.bounding_box();
+           let item = Arc::new(Item::new(v, id));
+           candidates.append(&mut Candidate::gen_candidates(item, &bb));
+
+           // Update space with the bounding box of the item
+           space.0.x = space.0.x.min(bb.0.x);
+           space.0.y = space.0.y.min(bb.0.y);
+           space.0.z = space.0.z.min(bb.0.z);
+           space.1.x = space.1.x.max(bb.1.x);
+           space.1.y = space.1.y.max(bb.1.y);
+           space.1.z = space.1.z.max(bb.1.z);
+       }
+
+       // Sort candidates only once at the begining
+       candidates.sort_by(|a, b| a.cmp(&b));
+
+       // Will be used to classify candidates
+       let mut sides = vec![Side::Both; n];
+       let root = KDtreeNode::new(&space, candidates, n, &mut sides);
+       KDtree { space, root }
+   }
+
+We're done with our final implementation! Don't forget that the complete code
+of each version is available.
 
 Benchmark
 ---------
@@ -821,11 +1393,11 @@ Tree construction runtime
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
 | Model      | Nb Tri | Naive (s) | :math:`O(N^2)` | :math:`O(N \log^2{N})` (s) | :math:`O(N \log N)` (s) |
 +============+========+===========+================+============================+=========================+
-| Armadillo  | 346k   | 0.352     | 28h            | 16                         |                         |
+| Armadillo  | 346k   | 0.352     | 28h            | 16                         | ...                     |
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
-| Dragon     | 863k   | 0.853     | 178h           | 60                         |                         |
+| Dragon     | 863k   | 0.853     | 178h           | 60                         | ~14...?                 |
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
-| Buddha     | 1m     | 1.016     | 240h           | 64                         |                         |
+| Buddha     | 1m     | 1.016     | 240h           | 64                         | ~14...?                 |
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
-| ThaiStatue | 10m    | 14.7      | 1,000days      | 1,918 (need confirm)       |                         |
+| ThaiStatue | 10m    | 14.7      | 1,000days      | 1,918 ??                   | ???                     |
 +------------+--------+-----------+----------------+----------------------------+-------------------------+
