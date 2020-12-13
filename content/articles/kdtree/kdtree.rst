@@ -29,9 +29,10 @@ General principles
 Context
 =======
 
-Many rendering engines are based on the physics of light rays. This method allows
-to obtain realistic images, but is quite slow. Indeed, it requires throwing a
-lot of rays and checking if they intersect an object in the scene.
+Many rendering engines are based on the physics of light rays (such as
+`raytracer <https://en.wikipedia.org/wiki/Ray_tracing_(graphics)>`_).
+This method allows to obtain realistic images, but is quite slow. Indeed, it
+requires throwing a lot of rays and checking if they intersect an object in the scene.
 
 To do this, the easiest way is to check for each primitive (for example triangles)
 of the scene if it intersects the ray. Even if you have an efficient way to check
@@ -66,6 +67,10 @@ They are formed as follows:
    (by the green horizontal planes) into two subcells. Finally, four cells are
    split (by the four blue vertical planes) into two subcells. Since there is no
    more splitting, the final eight are called leaf cells.
+
+It is important to note that if a primitive (e.g. triangle) is large enough and
+intersects several cells (subspaces) then this primitive will be found in several
+leaves of our kdtree.
 
 How to build it?
 ################
@@ -120,7 +125,7 @@ manipulate.
    #[derive(Clone, Debug)]
    pub struct AABB(pub Vector3<f32>, pub Vector3<f32>);
 
-Some function will be needed, as describe before:
+Some function will be needed, as described before:
 
 - ``intersect_ray`` will check if a ray (described by an origin and a direction)
   intersect our AABB. `More info about the math <https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection>`_
@@ -134,6 +139,8 @@ Some function will be needed, as describe before:
            ray_origin: &Vector3<f32>,
            ray_direction: &Vector3<f32>,
        ) -> bool {
+           // Check that the ray intersects the square of the bounding box on
+           // the X and Y axis.
            let mut tmin = (self.0.x - ray_origin.x) / ray_direction.x;
            let mut tmax = (self.1.x - ray_origin.x) / ray_direction.x;
 
@@ -151,6 +158,9 @@ Some function will be needed, as describe before:
            if (tmin > tymax) || (tymin > tmax) {
                return false;
            }
+
+           // Check that the ray intersects the square of the bounding box on
+           // the Y and Z axis.
 
            tmin = tmin.max(tymin);
            tmax = tmax.min(tymax);
@@ -236,11 +246,13 @@ The implementation of this structure is really important. We need to optimize th
 Note that our leaves stores ``Items<P>`` and not ``P`` we'll talk about ``Item``
 later. What we can explain now is the data structure used to store these items.
 We're using an ``HashSet`` instead of a ``Vec``. When we are intersecting a ray to
-our kdtree we have to return all candidates primitives that could intersect the ray.
+our kdtree we have to return all primitives that could intersect the ray.
 In other words we have to retrieve all the leaves intersecting the ray and return
-their primitives. So we'll have to use the **union** mathematical operation to merge
+their primitives. Since the same primitive could be stored in several leaves that
+are intersected we'll have to use the **union** mathematical operation to merge
 these primitives in one collection without doubles. This operation can only be
-done using ``Set`` data structures. In addition our ``Item`` will need to be hashable.
+done fast using ``Set`` data structures. The only constraint to use a ``Set`` is
+that ``Item`` will need to be hashable.
 
 Plane
 #####
