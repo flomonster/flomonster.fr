@@ -2,8 +2,11 @@ Introduction
 ------------
 
 The purpose of this article is to describe how to implement an optimized KD tree
-for raytracing (or other rendering engine) in Rust. The choice of language is
-arbitrary and should not disturb a *non-rustacean* (who doesn't code in rust) reader.
+for raytracing (or other rendering engine) in Rust. The data structure I'm implementing
+is called `Bounding volume hierarchy (BVH) <https://en.wikipedia.org/wiki/Bounding_volume_hierarchy>`_
+but the optimization used in this articles works for all kdtree. The choice of
+language is arbitrary and should not disturb a *non-rustacean* (who doesn't code
+in rust) reader.
 
 The implementation I will use is described in the scientific paper `On building fast kd-Trees
 for Ray Tracing, and on doing that in O(N log N)
