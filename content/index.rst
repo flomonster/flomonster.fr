@@ -3,8 +3,16 @@ I am Florian Amsallem, French computer engineer graduated from `EPITA
 interested in **programming** and **image rendering**. I mainly code in Rust, C++
 and Python.
 
+I am currently working on `OSRD <https://github.com/DGEXSolutions/osrd>`__ at DGEXSolutions,
+which is part of `SNCF réseau <https://www.sncf-reseau.com/fr>`__.
+
 Projects
 ========
+
+Open Source Railway Designer:
+
+- `osrd <https://github.com/DGEXSolutions/osrd>`__: the next generation of railway
+  design and simulation tools.
 
 Some of my favorite personal projects:
 
