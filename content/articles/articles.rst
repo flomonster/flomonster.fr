@@ -1,4 +1,4 @@
 Rendering
 ---------
 
-- `Fast and efficient implementation of KD-Tree in Rust </articles/kdtree.html>`__
+- `Fast and efficient implementation of KD-Tree for raytracer in Rust </articles/kdtree.html>`__

@@ -1,7 +1,7 @@
-title: Fast and efficient implementation of KD-Tree in Rust
+title: Fast and efficient implementation of KD-Tree for raytracer in Rust
 path: articles/kdtree.html
 template: article
 toplevel: false
 published: 12/12/2020
-modified: 12/16/2020
+modified: 01/18/2023
 navbar_title: KD-Tree in Rust
