@@ -17,8 +17,6 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: flomonster/flomonster.fr
-          tags: |
-            type=semver,pattern={{version}}
         id: docker_meta
 
       - name: Set up QEMU
