@@ -3,8 +3,7 @@ I am Florian Amsallem, French computer engineer graduated from `EPITA
 interested in **programming** and **image rendering**. I mainly code in Rust, C++
 and Python.
 
-I am currently working on `OSRD <https://github.com/DGEXSolutions/osrd>`__ at DGEXSolutions,
-which is part of `SNCF réseau <https://www.sncf-reseau.com/en>`__.
+I am currently working on `OSRD <https://github.com/DGEXSolutions/osrd>`__ at `SNCF réseau <https://www.sncf-reseau.com/en>`__.
 
 Projects
 ========
@@ -16,10 +15,11 @@ Open Source Railway Designer:
 
 Some of my favorite personal projects:
 
--  `my-git <https://github.com/flomonster/my-git>`__: a re-implementation of the
-   git version control system in Rust.
--  `easy-gltf <https://github.com/flomonster/easy-gltf>`__: a Rust library to
-   load gltf scenes easily and ready to render.
+-  `pathtracer <https://github.com/flomonster/path-tracer>`__: a path tracer written in Rust.
+-  `kdtree-ray <https://github.com/flomonster/kdtree-ray>`__: an implementation of `KD-Tree <https://en.wikipedia.org/wiki/K-d_tree>`__ 
+for raytracer in Rust 
+-  `easy-gltf <https://github.com/flomonster/easy-gltf>`__: a Rust library to load gltf scenes easily and ready to render.
+-  `my-git <https://github.com/flomonster/my-git>`__: a re-implementation of the git version control system in Rust.
 
 School projects:
 
