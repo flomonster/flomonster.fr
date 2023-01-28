@@ -3,5 +3,5 @@ path: articles/kdtree.html
 template: article
 toplevel: false
 published: 12/12/2020
-modified: 01/18/2023
+modified: 01/28/2023
 navbar_title: KD-Tree in Rust

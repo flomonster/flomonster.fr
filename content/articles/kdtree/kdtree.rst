@@ -18,12 +18,8 @@ It is better to use a BVH if you implement it on the GPU or if you want to updat
 of the shapes (useful for animation).
 
 This article describes the implementation of several versions of kdtree starting
-from a naive version to an optimized version. Each version of the code is available:
-
-* Naive implementation: `<https://github.com/flomonster/kdtree-ray/tree/naive>`_.
-* Sah in :math:`O(N^2)`: `<https://github.com/flomonster/kdtree-ray/tree/sah-quadratic>`_.
-* Sah in :math:`O(N \log^2{N})`: `<https://github.com/flomonster/kdtree-ray/tree/sah-log2>`_.
-* Sah in :math:`O(N \log{N})`: `<https://github.com/flomonster/kdtree-ray/tree/sah-log>`_.
+from a naive version to an optimized version. The final and most optimized version is available on 
+`github <https://github.com/flomonster/kdtree-ray/>`__.
 
 The models used for benchmark are from the `Stanford Scanning Repository
 <http://graphics.stanford.edu/data/3Dscanrep/>`_.
