@@ -1,4 +1,4 @@
-# flomonster.fr
+# [flomonster.fr](http://flomonster.fr/)
 
 ## Build
 
@@ -20,10 +20,6 @@ of pandoc because pypandoc is only a wrapper around it.
 ## Docker Image
 
 You can find the docker image [here](https://hub.docker.com/repository/docker/flomonster/flomonster.fr).
-
-## Server
-
-The website is hosted [here](http://flomonster.fr/).
 
 ## License
 
