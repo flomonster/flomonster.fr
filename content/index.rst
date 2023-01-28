@@ -16,8 +16,8 @@ Open Source Railway Designer:
 Some of my favorite personal projects:
 
 -  `pathtracer <https://github.com/flomonster/path-tracer>`__: a path tracer written in Rust.
--  `kdtree-ray <https://github.com/flomonster/kdtree-ray>`__: an implementation of `KD-Tree <https://en.wikipedia.org/wiki/K-d_tree>`__ 
-for raytracer in Rust 
+-  `kdtree-ray <https://github.com/flomonster/kdtree-ray>`__: an implementation of `KD-Tree <https://en.wikipedia.org/wiki/K-d_tree>`__
+   for raytracer in Rust
 -  `easy-gltf <https://github.com/flomonster/easy-gltf>`__: a Rust library to load gltf scenes easily and ready to render.
 -  `my-git <https://github.com/flomonster/my-git>`__: a re-implementation of the git version control system in Rust.
 
