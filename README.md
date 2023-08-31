@@ -19,7 +19,7 @@ of pandoc because pypandoc is only a wrapper around it.
 
 ## Docker Image
 
-You can find the docker image [here](https://hub.docker.com/repository/docker/flomonster/flomonster.fr).
+You can find the docker image [here](https://hub.docker.com/r/flomonster/flomonster.fr).
 
 ## License
 
