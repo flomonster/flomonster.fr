@@ -16,10 +16,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN make build
 
 # Run stage
-FROM python:3.8-alpine
+FROM nginx:alpine
 
-COPY --from=builder /code/html /site
+ARG NGINX_CONFIG=nginx.conf
+COPY --from=builder /code/html /usr/share/nginx/html
 
-WORKDIR /site
+RUN rm /etc/nginx/conf.d/default.conf
+COPY nginx/$NGINX_CONFIG /etc/nginx/conf.d
 
-CMD [ "python3", "-m", "http.server", "8000" ]
+EXPOSE 80
+
+ENTRYPOINT nginx -g "daemon off;"
