@@ -7,7 +7,7 @@ arbitrary and should not disturb a *non-rustacean* (who doesn't code in rust) re
 
 The implementation I will use is described in the scientific paper `On building fast kd-Trees
 for Ray Tracing, and on doing that in O(N log N)
-<http://www.irisa.fr/prive/kadi/Sujets_CTR/kadi/Kadi_sujet2_article_KDTree.pdf>`_.
+<https://www.irisa.fr/prive/kadi/Sujets_CTR/kadi/Kadi_sujet2_article_Kdtree.pdf>`_.
 Since this paper describes well the theoretical part, I will focus on the
 implementation. However, if you just want to implement a KD tree without diving
 into the paper formulas, you can keep reading without woring.
@@ -654,7 +654,7 @@ shapes in the child and the ratio of the surface taken by the child's space.
 
 Some shortcuts were made in the explanation of the formulas for more details take
 a look at the `scientific reference paper
-<http://www.irisa.fr/prive/kadi/Sujets_CTR/kadi/Kadi_sujet2_article_KDTree.pdf>`_.
+<https://www.irisa.fr/prive/kadi/Sujets_CTR/kadi/Kadi_sujet2_article_Kdtree.pdf>`_.
 
 One last thing, we can add a bonus for cutting space with no shapes is in one of the children.
 The paper suggest to reduced the computed cost by :math:`80\%`.
